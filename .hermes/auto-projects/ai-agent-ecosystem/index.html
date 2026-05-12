@@ -1,0 +1,790 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AI Agent Ecosystem Visualizer</title>
+<style>
+  :root {
+    --bg: #0a0a12;
+    --panel: rgba(12, 12, 20, 0.95);
+    --border: rgba(100, 100, 255, 0.12);
+    --text: #c0c0d0;
+    --text-dim: #555568;
+    --accent: #7b6ff0;
+    --star: #ffd700;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'JetBrains Mono', monospace;
+    min-height: 100vh;
+    overflow: hidden;
+  }
+  body::before {
+    content: '';
+    position: fixed;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background:
+      radial-gradient(ellipse at 30% 30%, rgba(123, 111, 240, 0.05) 0%, transparent 50%),
+      radial-gradient(ellipse at 70% 70%, rgba(118, 185, 0, 0.04) 0%, transparent 50%);
+    pointer-events: none;
+  }
+  .scanlines {
+    position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+    background: repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(0,0,0,0.03) 2px, rgba(0,0,0,0.03) 4px);
+    pointer-events: none; z-index: 100;
+  }
+  .container {
+    position: relative; z-index: 1;
+    width: 100vw; height: 100vh;
+    display: flex;
+  }
+  canvas#mainCanvas {
+    position: absolute;
+    top: 0; left: 0;
+    width: 100%; height: 100%;
+    cursor: grab;
+  }
+  canvas#mainCanvas:active { cursor: grabbing; }
+
+  /* Sidebar */
+  .sidebar {
+    width: 320px;
+    height: 100vh;
+    background: var(--panel);
+    border-right: 1px solid var(--border);
+    padding: 20px;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    backdrop-filter: blur(10px);
+  }
+  .sidebar::-webkit-scrollbar { width: 4px; }
+  .sidebar::-webkit-scrollbar-thumb { background: var(--accent); border-radius: 2px; }
+
+  .logo {
+    text-align: center;
+    padding-bottom: 16px;
+    border-bottom: 1px solid var(--border);
+  }
+  .logo h1 {
+    font-size: 16px;
+    background: linear-gradient(135deg, var(--accent), #76b900);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    margin-bottom: 4px;
+  }
+  .logo p { font-size: 10px; color: var(--text-dim); }
+
+  .section-title {
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 1.5px;
+    color: var(--text-dim);
+    padding-bottom: 6px;
+    border-bottom: 1px solid rgba(255,255,255,0.05);
+  }
+
+  .filter-group {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+  }
+  .filter-btn {
+    background: rgba(255,255,255,0.04);
+    border: 1px solid rgba(255,255,255,0.08);
+    color: var(--text-dim);
+    padding: 4px 10px;
+    border-radius: 4px;
+    font-size: 10px;
+    cursor: pointer;
+    transition: all 0.2s;
+    font-family: inherit;
+  }
+  .filter-btn:hover { border-color: var(--accent); color: var(--text); }
+  .filter-btn.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+
+  .agent-list {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+  .agent-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: all 0.2s;
+    border: 1px solid transparent;
+  }
+  .agent-item:hover { background: rgba(255,255,255,0.04); }
+  .agent-item.selected { border-color: var(--accent); background: rgba(123, 111, 240, 0.08); }
+  .agent-dot {
+    width: 10px; height: 10px;
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
+  .agent-name {
+    font-size: 11px;
+    font-weight: 600;
+    flex: 1;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .agent-stars {
+    font-size: 10px;
+    color: var(--star);
+    display: flex;
+    align-items: center;
+    gap: 2px;
+  }
+  .agent-category {
+    font-size: 9px;
+    color: var(--text-dim);
+    padding: 2px 6px;
+    border-radius: 3px;
+    background: rgba(255,255,255,0.04);
+  }
+
+  .info-panel {
+    background: rgba(255,255,255,0.02);
+    border: 1px solid rgba(255,255,255,0.06);
+    border-radius: 8px;
+    padding: 12px;
+    display: none;
+  }
+  .info-panel.visible { display: block; }
+  .info-panel h3 { font-size: 13px; margin-bottom: 8px; }
+  .info-row {
+    display: flex;
+    justify-content: space-between;
+    padding: 4px 0;
+    font-size: 11px;
+    border-bottom: 1px solid rgba(255,255,255,0.03);
+  }
+  .info-label { color: var(--text-dim); }
+  .info-value { font-weight: 600; }
+
+  .stats-bar {
+    display: flex;
+    justify-content: space-around;
+    padding: 12px;
+    background: rgba(255,255,255,0.02);
+    border-radius: 8px;
+    border: 1px solid rgba(255,255,255,0.05);
+  }
+  .stat-item {
+    text-align: center;
+  }
+  .stat-num { font-size: 18px; font-weight: 700; color: var(--accent); }
+  .stat-label { font-size: 9px; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.5px; }
+
+  /* Top-right controls */
+  .top-controls {
+    position: absolute;
+    top: 16px;
+    right: 16px;
+    z-index: 10;
+    display: flex;
+    gap: 8px;
+  }
+  .ctrl-btn {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    color: var(--text);
+    padding: 8px 12px;
+    border-radius: 6px;
+    font-size: 12px;
+    cursor: pointer;
+    transition: all 0.2s;
+    font-family: inherit;
+    backdrop-filter: blur(10px);
+  }
+  .ctrl-btn:hover { border-color: var(--accent); }
+
+  /* Tooltip */
+  .tooltip {
+    position: absolute;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 10px 14px;
+    font-size: 11px;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 0.2s;
+    z-index: 200;
+    max-width: 240px;
+    backdrop-filter: blur(10px);
+  }
+  .tooltip.visible { opacity: 1; }
+  .tooltip h4 { font-size: 12px; margin-bottom: 4px; }
+  .tooltip p { color: var(--text-dim); line-height: 1.4; }
+
+  @media (max-width: 768px) {
+    .sidebar { width: 260px; padding: 12px; }
+  }
+</style>
+</head>
+<body>
+<div class="scanlines"></div>
+<div class="container">
+  <!-- Sidebar -->
+  <div class="sidebar">
+    <div class="logo">
+      <h1>🌐 AI Agent Ecosystem</h1>
+      <p>Interactive Network Visualization</p>
+    </div>
+
+    <div class="stats-bar">
+      <div class="stat-item">
+        <div class="stat-num" id="nodeCount">0</div>
+        <div class="stat-label">Agents</div>
+      </div>
+      <div class="stat-item">
+        <div class="stat-num" id="edgeCount">0</div>
+        <div class="stat-label">Connections</div>
+      </div>
+      <div class="stat-item">
+        <div class="stat-num" id="fpsCount">60</div>
+        <div class="stat-label">FPS</div>
+      </div>
+    </div>
+
+    <div>
+      <div class="section-title">Filter by Category</div>
+      <div class="filter-group" id="filterGroup"></div>
+    </div>
+
+    <div>
+      <div class="section-title">Agent List</div>
+      <div class="agent-list" id="agentList"></div>
+    </div>
+
+    <div class="info-panel" id="infoPanel">
+      <h3 id="infoName"></h3>
+      <div id="infoContent"></div>
+    </div>
+  </div>
+
+  <!-- Canvas -->
+  <canvas id="mainCanvas"></canvas>
+
+  <!-- Top controls -->
+  <div class="top-controls">
+    <button class="ctrl-btn" onclick="resetView()">🔄 Reset</button>
+    <button class="ctrl-btn" onclick="togglePhysics()">⚡ Physics: ON</button>
+    <button class="ctrl-btn" onclick="toggleLabels()">🏷️ Labels</button>
+  </div>
+
+  <!-- Tooltip -->
+  <div class="tooltip" id="tooltip">
+    <h4 id="ttTitle"></h4>
+    <p id="ttDesc"></p>
+  </div>
+</div>
+
+<script>
+// ═══════════════════════════════════════════════════════
+// AI AGENT ECOSYSTEM VISUALIZER
+// Force-directed graph of AI Agent relationships
+// ═══════════════════════════════════════════════════════
+
+const canvas = document.getElementById('mainCanvas');
+const ctx = canvas.getContext('2d');
+const tooltip = document.getElementById('tooltip');
+
+let W, H;
+let nodes = [];
+let edges = [];
+let physicsEnabled = true;
+let showLabels = true;
+let selectedNode = null;
+let hoveredNode = null;
+let dragNode = null;
+let dragOffset = { x: 0, y: 0 };
+let camera = { x: 0, y: 0, zoom: 1 };
+let isPanning = false;
+let panStart = { x: 0, y: 0 };
+let categories = {};
+let activeFilters = new Set();
+let frameCount = 0;
+let lastFpsTime = Date.now();
+let currentFps = 60;
+
+// ── Agent Data ──
+const agents = [
+  // Open Source Frameworks
+  { id: 'langchain', name: 'LangChain', stars: '90k', category: 'framework', desc: 'LLM application framework with chainable components', color: '#f59e0b' },
+  { id: 'llamaindex', name: 'LlamaIndex', stars: '35k', category: 'framework', desc: 'Data framework for LLM-based applications', color: '#8b5cf6' },
+  { id: 'openai', name: 'OpenAI Assistants', stars: '—', category: 'framework', desc: 'Official OpenAI agent framework with tools', color: '#10b981' },
+  { id: 'crewai', name: 'CrewAI', stars: '25k', category: 'framework', desc: 'Multi-agent orchestration framework', color: '#3b82f6' },
+  { id: 'autogen', name: 'AutoGen', stars: '40k', category: 'framework', desc: 'Microsoft multi-agent conversation framework', color: '#6366f1' },
+  { id: 'smithery', name: 'Smithery', stars: '15k', category: 'framework', desc: 'AI agent deployment platform', color: '#ec4899' },
+
+  // Models
+  { id: 'claude', name: 'Claude', stars: '—', category: 'model', desc: 'Anthropic\'s advanced reasoning model', color: '#a855f7' },
+  { id: 'gpt', name: 'GPT-4o', stars: '—', category: 'model', desc: 'OpenAI\'s multimodal flagship model', color: '#10b981' },
+  { id: 'gemini', name: 'Gemini', stars: '—', category: 'model', desc: 'Google\'s ultra-efficient multimodal model', color: '#3b82f6' },
+  { id: 'llama', name: 'Llama 3', stars: '—', category: 'model', desc: 'Meta\'s open-source 70B model', color: '#3b82f6' },
+  { id: 'qwen', name: 'Qwen', stars: '—', category: 'model', desc: 'Alibaba\'s advanced reasoning model', color: '#f97316' },
+
+  // Desktop Apps
+  { id: 'uittars', name: 'UI-TARS', stars: '33k', category: 'desktop', desc: 'Multimodal AI agent for UI automation', color: '#ef4444' },
+  { id: 'cognitive', name: 'Cognitive', stars: '12k', category: 'desktop', desc: 'AI desktop assistant with plugin system', color: '#8b5cf6' },
+  { id: 'cursor', name: 'Cursor', stars: '—', category: 'desktop', desc: 'AI-first code editor', color: '#f59e0b' },
+  { id: 'windsurf', name: 'Windsurf', stars: '—', category: 'desktop', desc: 'AI code editor by Codeium', color: '#06b6d4' },
+
+  // Platforms
+  { id: 'cline', name: 'Cline', stars: '40k', category: 'platform', desc: 'Autonomous coding agent in VSCode', color: '#ec4899' },
+  { id: 'aider', name: 'Aider', stars: '35k', category: 'platform', desc: 'CLI AI pair programmer', color: '#10b981' },
+  { id: 'openrouter', name: 'OpenRouter', stars: '20k', category: 'platform', desc: 'Unified API for 200+ AI models', color: '#6366f1' },
+  { id: '9router', name: '9Router', stars: '8k', category: 'platform', desc: 'AI agent routing and orchestration', color: '#f97316' },
+  { id: 'aitoearn', name: 'AiToEarn', stars: '11k', category: 'platform', desc: 'Decentralized AI agent marketplace', color: '#ef4444' },
+
+  // Tools
+  { id: 'vibe', name: 'Vibe Coding', stars: '—', category: 'tool', desc: 'Natural language → code workflow', color: '#a855f7' },
+  { id: 'ratt', name: 'Ratty', stars: '—', category: 'tool', desc: '3D terminal with built-in rendering', color: '#06b6d4' },
+  { id: 'supersplat', name: 'SuperSplat', stars: '7k', category: 'tool', desc: '3D Gaussian Splatting editor', color: '#f97316' },
+  { id: 'comfyui', name: 'ComfyUI', stars: '60k', category: 'tool', desc: 'Node-based AI image generation', color: '#10b981' },
+  { id: 'diffusers', name: 'Diffusers', stars: '35k', category: 'tool', desc: 'HuggingFace diffusion model library', color: '#3b82f6' },
+];
+
+// ── Edges (relationships) ──
+const edgeDefs = [
+  { source: 'claude', target: 'langchain', weight: 3, label: 'Integration' },
+  { source: 'claude', target: 'llamaindex', weight: 2, label: 'Integration' },
+  { source: 'gpt', target: 'langchain', weight: 3, label: 'Primary API' },
+  { source: 'gpt', target: 'openai', weight: 3, label: 'Native' },
+  { source: 'gpt', target: 'cursor', weight: 2, label: 'Code Editor' },
+  { source: 'gemini', target: 'llamaindex', weight: 2, label: 'Integration' },
+  { source: 'llama', target: 'llamaindex', weight: 3, label: 'Open Source' },
+  { source: 'qwen', target: 'llamaindex', weight: 1, label: 'Integration' },
+  { source: 'uittars', target: 'gpt', weight: 1, label: 'Powered by' },
+  { source: 'uittars', target: 'claude', weight: 1, label: 'Powered by' },
+  { source: 'crewai', target: 'claude', weight: 2, label: 'Uses' },
+  { source: 'crewai', target: 'gpt', weight: 2, label: 'Uses' },
+  { source: 'crewai', target: 'llama', weight: 1, label: 'Supports' },
+  { source: 'autogen', target: 'gpt', weight: 2, label: 'Powered by' },
+  { source: 'autogen', target: 'claude', weight: 1, label: 'Supports' },
+  { source: 'cline', target: 'gpt', weight: 2, label: 'Primary' },
+  { source: 'cline', target: 'claude', weight: 2, label: 'Primary' },
+  { source: 'cline', target: 'llama', weight: 1, label: 'Supports' },
+  { source: 'aider', target: 'gpt', weight: 2, label: 'Primary' },
+  { source: 'aider', target: 'claude', weight: 2, label: 'Primary' },
+  { source: 'aider', target: 'llama', weight: 1, label: 'Supports' },
+  { source: 'openrouter', target: 'claude', weight: 2, label: 'Provider' },
+  { source: 'openrouter', target: 'gpt', weight: 2, label: 'Provider' },
+  { source: 'openrouter', target: 'gemini', weight: 2, label: 'Provider' },
+  { source: 'openrouter', target: 'qwen', weight: 1, label: 'Provider' },
+  { source: 'openrouter', target: 'llama', weight: 1, label: 'Provider' },
+  { source: '9router', target: 'gpt', weight: 2, label: 'Routes' },
+  { source: '9router', target: 'claude', weight: 2, label: 'Routes' },
+  { source: 'aitoearn', target: 'claude', weight: 1, label: 'Uses' },
+  { source: 'aitoearn', target: 'gpt', weight: 1, label: 'Uses' },
+  { source: 'aitoearn', target: 'llama', weight: 1, label: 'Uses' },
+  { source: 'cursor', target: 'claude', weight: 2, label: 'Uses' },
+  { source: 'cursor', target: 'gpt', weight: 2, label: 'Uses' },
+  { source: 'windsurf', target: 'claude', weight: 1, label: 'Uses' },
+  { source: 'windsurf', target: 'gpt', weight: 1, label: 'Uses' },
+  { source: 'comfyui', target: 'diffusers', weight: 3, label: 'Based on' },
+  { source: 'ratty', target: 'supersplat', weight: 1, label: 'Inspired by' },
+  { source: 'smithery', target: 'claude', weight: 1, label: 'Uses' },
+  { source: 'smithery', target: 'gpt', weight: 1, label: 'Uses' },
+  { source: 'vibe', target: 'cursor', weight: 2, label: 'Workflow' },
+  { source: 'vibe', target: 'windsurf', weight: 2, label: 'Workflow' },
+  { source: 'cognitive', target: 'claude', weight: 2, label: 'Powered by' },
+  { source: 'cognitive', target: 'gpt', weight: 2, label: 'Powered by' },
+];
+
+// ── Initialize ──
+function init() {
+  resize();
+  window.addEventListener('resize', resize);
+
+  // Create nodes
+  agents.forEach(a => {
+    const angle = Math.random() * Math.PI * 2;
+    const radius = 100 + Math.random() * 200;
+    nodes.push({
+      ...a,
+      x: W / 2 + Math.cos(angle) * radius,
+      y: H / 2 + Math.sin(angle) * radius,
+      vx: 0, vy: 0,
+      radius: 12 + Math.min(parseInt(a.stars) || 10, 5) * 1.5,
+    });
+    if (!categories[a.category]) categories[a.category] = { name: getCategoryName(a.category), color: a.color };
+  });
+
+  // Create edges
+  edgeDefs.forEach(e => {
+    const src = nodes.find(n => n.id === e.source);
+    const tgt = nodes.find(n => n.id === e.target);
+    if (src && tgt) {
+      edges.push({ source: src, target: tgt, weight: e.weight, label: e.label });
+    }
+  });
+
+  // Init filters
+  const filterGroup = document.getElementById('filterGroup');
+  Object.entries(categories).forEach(([key, cat]) => {
+    const btn = document.createElement('button');
+    btn.className = 'filter-btn active';
+    btn.textContent = cat.name;
+    btn.style.borderColor = cat.color;
+    btn.dataset.category = key;
+    btn.addEventListener('click', () => toggleFilter(key, btn));
+    filterGroup.appendChild(btn);
+    activeFilters.add(key);
+  });
+
+  updateAgentList();
+  updateStats();
+  setupInteraction();
+  animate();
+}
+
+function getCategoryName(cat) {
+  const names = {
+    framework: 'Framework',
+    model: 'Model',
+    desktop: 'Desktop App',
+    platform: 'Platform',
+    tool: 'Tool',
+  };
+  return names[cat] || cat;
+}
+
+function resize() {
+  W = canvas.width = window.innerWidth - (window.innerWidth > 768 ? 320 : 0);
+  H = canvas.height = window.innerHeight;
+}
+
+// ── Physics ──
+function applyForces() {
+  if (!physicsEnabled) return;
+
+  // Repulsion between all nodes
+  for (let i = 0; i < nodes.length; i++) {
+    for (let j = i + 1; j < nodes.length; j++) {
+      const dx = nodes[j].x - nodes[i].x;
+      const dy = nodes[j].y - nodes[i].y;
+      const dist = Math.sqrt(dx * dx + dy * dy) || 1;
+      const force = 8000 / (dist * dist);
+      const fx = (dx / dist) * force;
+      const fy = (dy / dist) * force;
+      nodes[i].vx -= fx;
+      nodes[i].vy -= fy;
+      nodes[j].vx += fx;
+      nodes[j].vy += fy;
+    }
+  }
+
+  // Attraction along edges
+  edges.forEach(e => {
+    const dx = e.target.x - e.source.x;
+    const dy = e.target.y - e.source.y;
+    const dist = Math.sqrt(dx * dx + dy * dy) || 1;
+    const idealDist = 120 / e.weight;
+    const force = (dist - idealDist) * 0.005 * e.weight;
+    const fx = (dx / dist) * force;
+    const fy = (dy / dist) * force;
+    e.source.vx += fx;
+    e.source.vy += fy;
+    e.target.vx -= fx;
+    e.target.vy -= fy;
+  });
+
+  // Center gravity
+  nodes.forEach(n => {
+    n.vx += (W / 2 - n.x) * 0.0005;
+    n.vy += (H / 2 - n.y) * 0.0005;
+  });
+
+  // Apply velocities
+  nodes.forEach(n => {
+    n.vx *= 0.85;
+    n.vy *= 0.85;
+    n.x += n.vx;
+    n.y += n.vy;
+  });
+}
+
+// ── Rendering ──
+function render() {
+  ctx.clearRect(0, 0, W, H);
+
+  // Camera transform
+  ctx.save();
+  ctx.translate(W / 2, H / 2);
+  ctx.scale(camera.zoom, camera.zoom);
+  ctx.translate(-W / 2 + camera.x, -H / 2 + camera.y);
+
+  // Draw edges
+  edges.forEach(e => {
+    if (!activeFilters.has(e.source.category) || !activeFilters.has(e.target.category)) return;
+    const alpha = 0.15 * e.weight;
+    ctx.strokeStyle = `rgba(123, 111, 240, ${alpha})`;
+    ctx.lineWidth = e.weight * 0.5;
+    ctx.beginPath();
+    ctx.moveTo(e.source.x, e.source.y);
+    ctx.lineTo(e.target.x, e.target.y);
+    ctx.stroke();
+  });
+
+  // Draw nodes
+  nodes.forEach(n => {
+    if (!activeFilters.has(n.category)) return;
+
+    const isSelected = selectedNode === n;
+    const isHovered = hoveredNode === n;
+    const r = n.radius * (isHovered ? 1.3 : 1) * (isSelected ? 1.2 : 1);
+
+    // Glow
+    if (isSelected || isHovered) {
+      const grad = ctx.createRadialGradient(n.x, n.y, r * 0.5, n.x, n.y, r * 3);
+      grad.addColorStop(0, n.color + '44');
+      grad.addColorStop(1, n.color + '00');
+      ctx.fillStyle = grad;
+      ctx.beginPath();
+      ctx.arc(n.x, n.y, r * 3, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    // Node circle
+    const grad = ctx.createRadialGradient(n.x - r * 0.3, n.y - r * 0.3, 0, n.x, n.y, r);
+    grad.addColorStop(0, n.color);
+    grad.addColorStop(1, n.color + '88');
+    ctx.fillStyle = grad;
+    ctx.beginPath();
+    ctx.arc(n.x, n.y, r, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Border
+    ctx.strokeStyle = isSelected ? '#fff' : n.color;
+    ctx.lineWidth = isSelected ? 3 : 2;
+    ctx.stroke();
+
+    // Label
+    if (showLabels) {
+      ctx.fillStyle = '#fff';
+      ctx.font = `${isSelected || isHovered ? 'bold ' : ''}${isSelected || isHovered ? 11 : 10}px JetBrains Mono, monospace`;
+      ctx.textAlign = 'center';
+      ctx.fillText(n.name, n.x, n.y + r + 16);
+
+      if (isHovered || isSelected) {
+        ctx.fillStyle = n.color;
+        ctx.font = '10px JetBrains Mono, monospace';
+        ctx.fillText(n.stars, n.x, n.y + r + 28);
+      }
+    }
+  });
+
+  ctx.restore();
+}
+
+// ── Animation loop ──
+function animate() {
+  applyForces();
+  render();
+
+  // FPS counter
+  frameCount++;
+  const now = Date.now();
+  if (now - lastFpsTime >= 1000) {
+    currentFps = frameCount;
+    document.getElementById('fpsCount').textContent = currentFps;
+    frameCount = 0;
+    lastFpsTime = now;
+  }
+
+  requestAnimationFrame(animate);
+}
+
+// ── Interaction ──
+function setupInteraction() {
+  canvas.addEventListener('mousedown', e => {
+    const pos = getMousePos(e);
+    const node = getNodeAt(pos.x, pos.y);
+    if (node) {
+      dragNode = node;
+      dragOffset.x = pos.x - node.x;
+      dragOffset.y = pos.y - node.y;
+      selectNode(node);
+    } else {
+      isPanning = true;
+      panStart.x = e.clientX - camera.x;
+      panStart.y = e.clientY - camera.y;
+      deselectNode();
+    }
+  });
+
+  canvas.addEventListener('mousemove', e => {
+    const pos = getMousePos(e);
+    const node = getNodeAt(pos.x, pos.y);
+
+    if (dragNode) {
+      dragNode.x = pos.x - dragOffset.x;
+      dragNode.y = pos.y - dragOffset.y;
+      dragNode.vx = 0;
+      dragNode.vy = 0;
+    } else if (isPanning) {
+      camera.x = e.clientX - panStart.x;
+      camera.y = e.clientY - panStart.y;
+    } else {
+      if (node !== hoveredNode) {
+        hoveredNode = node;
+        if (node) {
+          tooltip.classList.add('visible');
+          document.getElementById('ttTitle').textContent = node.name;
+          document.getElementById('ttDesc').textContent = node.desc;
+        } else {
+          tooltip.classList.remove('visible');
+        }
+      }
+    }
+  });
+
+  canvas.addEventListener('mouseup', () => {
+    dragNode = null;
+    isPanning = false;
+  });
+
+  canvas.addEventListener('mouseleave', () => {
+    dragNode = null;
+    isPanning = false;
+    tooltip.classList.remove('visible');
+    hoveredNode = null;
+  });
+
+  canvas.addEventListener('wheel', e => {
+    e.preventDefault();
+    const delta = e.deltaY > 0 ? 0.9 : 1.1;
+    camera.zoom = Math.max(0.3, Math.min(3, camera.zoom * delta));
+  }, { passive: false });
+
+  // Touch support
+  canvas.addEventListener('touchstart', handleTouch);
+  canvas.addEventListener('touchmove', handleTouch);
+  canvas.addEventListener('touchend', () => { dragNode = null; isPanning = false; });
+}
+
+function handleTouch(e) {
+  e.preventDefault();
+  const touch = e.touches[0];
+  const mouseEvent = new MouseEvent(e.type === 'touchstart' ? 'mousedown' : 'mousemove', {
+    clientX: touch.clientX,
+    clientY: touch.clientY,
+  });
+  canvas.dispatchEvent(mouseEvent);
+}
+
+function getMousePos(e) {
+  const rect = canvas.getBoundingClientRect();
+  return {
+    x: (e.clientX - rect.left - W / 2) / camera.zoom + W / 2 - camera.x,
+    y: (e.clientY - rect.top - H / 2) / camera.zoom + H / 2 - camera.y,
+  };
+}
+
+function getNodeAt(x, y) {
+  for (let i = nodes.length - 1; i >= 0; i--) {
+    const n = nodes[i];
+    const dx = x - n.x;
+    const dy = y - n.y;
+    if (dx * dx + dy * dy < (n.radius + 5) * (n.radius + 5)) return n;
+  }
+  return null;
+}
+
+function selectNode(node) {
+  selectedNode = node;
+  const panel = document.getElementById('infoPanel');
+  panel.classList.add('visible');
+  document.getElementById('infoName').textContent = node.name;
+  document.getElementById('infoContent').innerHTML = `
+    <div class="info-row"><span class="info-label">Category</span><span class="info-value">${getCategoryName(node.category)}</span></div>
+    <div class="info-row"><span class="info-label">Stars</span><span class="info-value">${node.stars}</span></div>
+    <div class="info-row"><span class="info-label">Connections</span><span class="info-value">${edges.filter(e => e.source === node || e.target === node).length}</span></div>
+    <div class="info-row"><span class="info-label">Description</span></div>
+    <div style="font-size:11px;color:var(--text-dim);padding-top:6px;">${node.desc}</div>
+  `;
+}
+
+function deselectNode() {
+  selectedNode = null;
+  document.getElementById('infoPanel').classList.remove('visible');
+}
+
+function toggleFilter(category, btn) {
+  if (activeFilters.has(category)) {
+    activeFilters.delete(category);
+    btn.classList.remove('active');
+  } else {
+    activeFilters.add(category);
+    btn.classList.add('active');
+  }
+  updateStats();
+}
+
+function resetView() {
+  camera = { x: 0, y: 0, zoom: 1 };
+  nodes.forEach((n, i) => {
+    const angle = (i / nodes.length) * Math.PI * 2;
+    const radius = 150 + Math.random() * 100;
+    n.x = W / 2 + Math.cos(angle) * radius;
+    n.y = H / 2 + Math.sin(angle) * radius;
+    n.vx = 0;
+    n.vy = 0;
+  });
+}
+
+function togglePhysics() {
+  physicsEnabled = !physicsEnabled;
+  event.target.textContent = `⚡ Physics: ${physicsEnabled ? 'ON' : 'OFF'}`;
+}
+
+function toggleLabels() {
+  showLabels = !showLabels;
+  event.target.textContent = `🏷️ Labels: ${showLabels ? 'ON' : 'OFF'}`;
+}
+
+function updateAgentList() {
+  const list = document.getElementById('agentList');
+  const sorted = [...nodes].sort((a, b) => parseInt(b.stars) - parseInt(a.stars));
+  list.innerHTML = sorted.map(n => `
+    <div class="agent-item" data-id="${n.id}">
+      <div class="agent-dot" style="background:${n.color}"></div>
+      <div class="agent-name">${n.name}</div>
+      <div class="agent-stars">⭐ ${n.stars}</div>
+      <div class="agent-category">${getCategoryName(n.category)}</div>
+    </div>
+  `).join('');
+
+  list.querySelectorAll('.agent-item').forEach(item => {
+    item.addEventListener('click', () => {
+      const node = nodes.find(n => n.id === item.dataset.id);
+      if (node) selectNode(node);
+    });
+  });
+}
+
+function updateStats() {
+  const visibleNodes = nodes.filter(n => activeFilters.has(n.category));
+  const visibleEdges = edges.filter(e => activeFilters.has(e.source.category) && activeFilters.has(e.target.category));
+  document.getElementById('nodeCount').textContent = visibleNodes.length;
+  document.getElementById('edgeCount').textContent = visibleEdges.length;
+}
+
+// ── Start ──
+init();
+</script>
+</body>
+</html>
