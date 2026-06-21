@@ -1,0 +1,7 @@
+# All non-project files
+*
+!token-compression-lab/
+!cors-explorer/
+!loupe-privacy-radar/
+!index.html
+!.gitignore

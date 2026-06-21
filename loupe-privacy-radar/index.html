@@ -1,0 +1,688 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Loupe Privacy Radar — App 隱私權限視覺化</title>
+<style>
+:root {
+  --bg: #0a0a1a;
+  --surface: #12121a;
+  --border: #1e1e2e;
+  --text: #e0e0e8;
+  --text-dim: #8888a0;
+  --accent: #6c8cff;
+  --critical: #ff4444;
+  --high: #ff8844;
+  --medium: #ffd700;
+  --low: #4aff8a;
+  --info: #6c8cff;
+}
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+  font-family: 'SF Mono', 'Fira Code', 'Consolas', monospace;
+  background: var(--bg);
+  color: var(--text);
+  overflow-x: hidden;
+  min-height: 100vh;
+}
+.header {
+  text-align: center;
+  padding: 2rem 1rem 1rem;
+  border-bottom: 1px solid var(--border);
+}
+.header h1 {
+  font-size: 1.8rem;
+  background: linear-gradient(135deg, var(--accent), #ff4444);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  margin-bottom: 0.5rem;
+}
+.header p {
+  color: var(--text-dim);
+  font-size: 0.85rem;
+}
+.filters {
+  display: flex;
+  gap: 0.5rem;
+  padding: 1rem 2rem;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  flex-wrap: wrap;
+  justify-content: center;
+}
+.filter-btn {
+  padding: 0.4rem 1rem;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text-dim);
+  font-family: inherit;
+  font-size: 0.8rem;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+.filter-btn:hover {
+  border-color: var(--accent);
+  color: var(--text);
+}
+.filter-btn.active {
+  background: var(--accent);
+  color: #fff;
+  border-color: var(--accent);
+}
+.canvas-container {
+  position: relative;
+  width: 100%;
+  height: 55vh;
+  min-height: 350px;
+  overflow: hidden;
+}
+canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+.stats-bar {
+  display: flex;
+  justify-content: center;
+  gap: 2rem;
+  padding: 1rem 2rem;
+  background: var(--surface);
+  border-top: 1px solid var(--border);
+  flex-wrap: wrap;
+}
+.stat {
+  text-align: center;
+}
+.stat-label {
+  color: var(--text-dim);
+  font-size: 0.75rem;
+  margin-bottom: 0.25rem;
+}
+.stat-value {
+  font-size: 1.1rem;
+  font-weight: bold;
+}
+.stat-value.critical { color: var(--critical); }
+.stat-value.high { color: var(--high); }
+.stat-value.medium { color: var(--medium); }
+.stat-value.low { color: var(--low); }
+.info-panel {
+  max-width: 800px;
+  margin: 2rem auto;
+  padding: 0 2rem;
+}
+.info-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 1.5rem;
+  margin-bottom: 1rem;
+}
+.info-card h3 {
+  color: var(--accent);
+  font-size: 1rem;
+  margin-bottom: 0.75rem;
+}
+.info-card p {
+  color: var(--text-dim);
+  font-size: 0.85rem;
+  line-height: 1.6;
+}
+.legend {
+  display: flex;
+  gap: 1.5rem;
+  justify-content: center;
+  padding: 1rem;
+  flex-wrap: wrap;
+}
+.legend-item {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.8rem;
+  color: var(--text-dim);
+}
+.legend-dot {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+}
+.footer {
+  text-align: center;
+  padding: 2rem;
+  color: var(--text-dim);
+  font-size: 0.75rem;
+  border-top: 1px solid var(--border);
+}
+.tooltip {
+  position: absolute;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 1rem;
+  font-size: 0.8rem;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.2s;
+  z-index: 100;
+  max-width: 300px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
+}
+.tooltip.visible {
+  opacity: 1;
+}
+.tooltip h4 {
+  color: var(--accent);
+  margin-bottom: 0.5rem;
+}
+.tooltip p {
+  color: var(--text-dim);
+  font-size: 0.75rem;
+  line-height: 1.5;
+}
+@media (max-width: 768px) {
+  .filters { padding: 1rem; }
+  .canvas-container { height: 40vh; }
+  .stats-bar { gap: 1rem; }
+}
+</style>
+</head>
+<body>
+<div class="header">
+  <h1>🔍 Loupe Privacy Radar</h1>
+  <p>App → Data Type connectivity graph with risk assessment</p>
+</div>
+
+<div class="filters">
+  <button class="filter-btn active" data-filter="all">All Apps</button>
+  <button class="filter-btn" data-filter="social">📱 Social</button>
+  <button class="filter-btn" data-filter="productivity">⚡ Productivity</button>
+  <button class="filter-btn" data-filter="gaming">🎮 Gaming</button>
+  <button class="filter-btn" data-filter="finance">🏦 Finance</button>
+</div>
+
+<div class="legend">
+  <div class="legend-item">
+    <div class="legend-dot" style="background: var(--critical);"></div>
+    <span>Critical</span>
+  </div>
+  <div class="legend-item">
+    <div class="legend-dot" style="background: var(--high);"></div>
+    <span>High</span>
+  </div>
+  <div class="legend-item">
+    <div class="legend-dot" style="background: var(--medium);"></div>
+    <span>Medium</span>
+  </div>
+  <div class="legend-item">
+    <div class="legend-dot" style="background: var(--low);"></div>
+    <span>Low</span>
+  </div>
+</div>
+
+<div class="canvas-container">
+  <canvas id="mainCanvas"></canvas>
+  <div class="tooltip" id="tooltip"></div>
+</div>
+
+<div class="stats-bar">
+  <div class="stat">
+    <div class="stat-label">Tracked Apps</div>
+    <div class="stat-value" style="color: var(--accent);" id="statApps">12</div>
+  </div>
+  <div class="stat">
+    <div class="stat-label">Data Types</div>
+    <div class="stat-value" style="color: var(--accent);" id="statTypes">10</div>
+  </div>
+  <div class="stat">
+    <div class="stat-label">Critical Access</div>
+    <div class="stat-value critical" id="statCritical">3</div>
+  </div>
+  <div class="stat">
+    <div class="stat-label">Avg Risk Score</div>
+    <div class="stat-value" style="color: var(--medium);" id="statAvgRisk">6.2</div>
+  </div>
+</div>
+
+<div class="info-panel">
+  <div class="info-card">
+    <h3>🎯 Force-Directed Layout</h3>
+    <p>Apps cluster by category. Links to data types show what each app can access. Thicker links = higher risk. Hover over nodes to see details.</p>
+  </div>
+  <div class="info-card">
+    <h3>📊 Risk Scoring</h3>
+  </div>
+</div>
+
+<div class="footer">
+  Loupe Privacy Radar • Built with Canvas 2D + Force-Directed Graph • Auto-generated by hermes-agent<br>
+  Inspired by Loupe (HN 414pts) — raises awareness about app permissions
+</div>
+
+<script>
+const canvas = document.getElementById('mainCanvas');
+const ctx = canvas.getContext('2d');
+const tooltip = document.getElementById('tooltip');
+
+// App data
+const apps = [
+  { id: 'fb', name: 'Facebook', cat: 'social', risk: 9, desc: 'Social Media', color: '#6c8cff' },
+  { id: 'ig', name: 'Instagram', cat: 'social', risk: 8, desc: 'Social Media', color: '#ff6b9d' },
+  { id: 'tw', name: 'Twitter/X', cat: 'social', risk: 7, desc: 'Social Media', color: '#1d9bf0' },
+  { id: 'wc', name: 'WhatsApp', cat: 'social', risk: 7, desc: 'Messaging', color: '#25d366' },
+  { id: 'dr', name: 'Drive', cat: 'productivity', risk: 7, desc: 'Cloud Storage', color: '#0f9d58' },
+  { id: 'gm', name: 'Gmail', cat: 'productivity', risk: 8, desc: 'Email', color: '#ea4335' },
+  { id: 'ns', name: 'Notes', cat: 'productivity', risk: 4, desc: 'Note Taking', color: '#fbbc04' },
+  { id: 'mc', name: 'Minecraft', cat: 'gaming', risk: 6, desc: 'Gaming', color: '#5b8c3e' },
+  { id: 'ps', name: 'PlayStation', cat: 'gaming', risk: 6, desc: 'Gaming', color: '#006fcd' },
+  { id: 'am', name: 'Amazon', cat: 'gaming', risk: 7, desc: 'Shopping', color: '#ff9900' },
+  { id: 'pb', name: 'PayPal', cat: 'finance', risk: 8, desc: 'Payment', color: '#003087' },
+  { id: 'sp', name: 'Stripe', cat: 'finance', risk: 7, desc: 'Payment', color: '#635bff' },
+];
+
+const dataTypes = [
+  { id: 'location', name: '📍 Location', risk: 9 },
+  { id: 'contacts', name: '👥 Contacts', risk: 8 },
+  { id: 'camera', name: '📷 Camera', risk: 7 },
+  { id: 'microphone', name: '🎤 Microphone', risk: 7 },
+  { id: 'photos', name: '🖼️ Photos', risk: 6 },
+  { id: 'email', name: '📧 Email', risk: 8 },
+  { id: 'calendar', name: '📅 Calendar', risk: 6 },
+  { id: 'device_id', name: '📱 Device ID', risk: 5 },
+  { id: 'network', name: '🌐 Network', risk: 6 },
+  { id: 'payment', name: '💳 Payment', risk: 9 },
+];
+
+// Connections: app accesses data type
+const connections = [
+  { app: 'fb', type: 'location', weight: 0.9 },
+  { app: 'fb', type: 'contacts', weight: 0.9 },
+  { app: 'fb', type: 'camera', weight: 0.7 },
+  { app: 'fb', type: 'microphone', weight: 0.7 },
+  { app: 'fb', type: 'photos', weight: 0.8 },
+  { app: 'fb', type: 'email', weight: 0.9 },
+  { app: 'fb', type: 'calendar', weight: 0.5 },
+  { app: 'fb', type: 'device_id', weight: 0.8 },
+  { app: 'fb', type: 'network', weight: 0.6 },
+
+  { app: 'ig', type: 'location', weight: 0.8 },
+  { app: 'ig', type: 'contacts', weight: 0.6 },
+  { app: 'ig', type: 'camera', weight: 0.9 },
+  { app: 'ig', type: 'microphone', weight: 0.6 },
+  { app: 'ig', type: 'photos', weight: 0.9 },
+  { app: 'ig', type: 'device_id', weight: 0.7 },
+  { app: 'ig', type: 'network', weight: 0.6 },
+
+  { app: 'tw', type: 'location', weight: 0.5 },
+  { app: 'tw', type: 'contacts', weight: 0.5 },
+  { app: 'tw', type: 'camera', weight: 0.6 },
+  { app: 'tw', type: 'device_id', weight: 0.6 },
+  { app: 'tw', type: 'network', weight: 0.5 },
+
+  { app: 'wc', type: 'location', weight: 0.7 },
+  { app: 'wc', type: 'contacts', weight: 0.9 },
+  { app: 'wc', type: 'camera', weight: 0.5 },
+  { app: 'wc', type: 'microphone', weight: 0.6 },
+  { app: 'wc', type: 'device_id', weight: 0.5 },
+
+  { app: 'dr', type: 'email', weight: 0.8 },
+  { app: 'dr', type: 'calendar', weight: 0.7 },
+  { app: 'dr', type: 'contacts', weight: 0.5 },
+  { app: 'dr', type: 'photos', weight: 0.8 },
+  { app: 'dr', type: 'device_id', weight: 0.6 },
+
+  { app: 'gm', type: 'email', weight: 0.9 },
+  { app: 'gm', type: 'calendar', weight: 0.8 },
+  { app: 'gm', type: 'contacts', weight: 0.6 },
+  { app: 'gm', type: 'device_id', weight: 0.5 },
+
+  { app: 'ns', type: 'email', weight: 0.3 },
+  { app: 'ns', type: 'device_id', weight: 0.4 },
+
+  { app: 'mc', type: 'location', weight: 0.3 },
+  { app: 'mc', type: 'camera', weight: 0.4 },
+  { app: 'mc', type: 'network', weight: 0.7 },
+  { app: 'mc', type: 'device_id', weight: 0.5 },
+
+  { app: 'ps', type: 'location', weight: 0.4 },
+  { app: 'ps', type: 'microphone', weight: 0.5 },
+  { app: 'ps', type: 'network', weight: 0.6 },
+  { app: 'ps', type: 'device_id', weight: 0.5 },
+
+  { app: 'am', type: 'location', weight: 0.8 },
+  { app: 'am', type: 'email', weight: 0.9 },
+  { app: 'am', type: 'payment', weight: 0.9 },
+  { app: 'am', type: 'camera', weight: 0.3 },
+  { app: 'am', type: 'device_id', weight: 0.6 },
+
+  { app: 'pb', type: 'email', weight: 0.9 },
+  { app: 'pb', type: 'payment', weight: 0.9 },
+  { app: 'pb', type: 'location', weight: 0.5 },
+  { app: 'pb', type: 'device_id', weight: 0.4 },
+
+  { app: 'sp', type: 'payment', weight: 0.9 },
+  { app: 'sp', type: 'email', weight: 0.7 },
+  { app: 'sp', type: 'network', weight: 0.5 },
+];
+
+let nodes = [];
+let currentFilter = 'all';
+let hoveredNode = null;
+let time = 0;
+
+function getRiskColor(risk) {
+  if (risk >= 8) return '#ff4444';
+  if (risk >= 6) return '#ff8844';
+  if (risk >= 4) return '#ffd700';
+  return '#4aff8a';
+}
+
+function initNodes() {
+  const w = canvas.width / window.devicePixelRatio;
+  const h = canvas.height / window.devicePixelRatio;
+  const cx = w / 2;
+  const cy = h / 2;
+
+  nodes = [];
+
+  // App nodes in a circle on the left
+  const filteredApps = currentFilter === 'all' ? apps : apps.filter(a => a.cat === currentFilter);
+  filteredApps.forEach((app, i) => {
+    const angle = (i / filteredApps.length) * Math.PI * 2 - Math.PI / 2;
+    nodes.push({
+      id: app.id,
+      label: app.name,
+      type: 'app',
+      x: cx - w * 0.2 + Math.cos(angle) * w * 0.15,
+      y: cy + Math.sin(angle) * h * 0.3,
+      vx: 0,
+      vy: 0,
+      data: app,
+      radius: 18,
+      visible: true
+    });
+  });
+
+  // Data type nodes in a circle on the right
+  const spacing = (Math.PI * 2) / dataTypes.length;
+  dataTypes.forEach((dt, i) => {
+    nodes.push({
+      id: dt.id,
+      label: dt.name,
+      type: 'data',
+      x: cx + w * 0.15 + Math.cos(spacing * i) * w * 0.25,
+      y: cy + Math.sin(spacing * i) * h * 0.35,
+      vx: 0,
+      vy: 0,
+      data: dt,
+      radius: 14,
+      visible: true
+    });
+  });
+}
+
+function updateNodes() {
+  const w = canvas.width / window.devicePixelRatio;
+  const h = canvas.height / window.devicePixelRatio;
+  const cx = w / 2;
+  const cy = h / 2;
+
+  // Simple force simulation
+  nodes.forEach(node => {
+    // Gravity toward center
+    node.vx += (cx - node.x) * 0.0001;
+    node.vy += (cy - node.y) * 0.0001;
+
+    // Repulsion between nodes
+    nodes.forEach(other => {
+      if (other === node) return;
+      const dx = other.x - node.x;
+      const dy = other.y - node.y;
+      const dist = Math.sqrt(dx * dx + dy * dy) || 1;
+      if (dist < 100) {
+        const force = -5000 / (dist * dist);
+        node.vx += (dx / dist) * force;
+        node.vy += (dy / dist) * force;
+      }
+    });
+
+    // Damping
+    node.vx *= 0.95;
+    node.vy *= 0.95;
+
+    // Apply velocity
+    node.x += node.vx;
+    node.y += node.vy;
+
+    // Boundary constraints
+    node.x = Math.max(30, Math.min(w - 30, node.x));
+    node.y = Math.max(30, Math.min(h - 30, node.y));
+  });
+}
+
+function drawGraph() {
+  const w = canvas.width / window.devicePixelRatio;
+  const h = canvas.height / window.devicePixelRatio;
+
+  // Background
+  ctx.fillStyle = '#0a0a1a';
+  ctx.fillRect(0, 0, w, h);
+
+  // Grid
+  ctx.strokeStyle = 'rgba(255, 255, 255, 0.02)';
+  ctx.lineWidth = 1;
+  for (let x = 0; x < w; x += 50) {
+    ctx.beginPath();
+    ctx.moveTo(x, 0);
+    ctx.lineTo(x, h);
+    ctx.stroke();
+  }
+  for (let y = 0; y < h; y += 50) {
+    ctx.beginPath();
+    ctx.moveTo(0, y);
+    ctx.lineTo(w, y);
+    ctx.stroke();
+  }
+
+  // Draw connections
+  connections.forEach(conn => {
+    const appNode = nodes.find(n => n.id === conn.app);
+    const typeNode = nodes.find(n => n.id === conn.type);
+    if (!appNode || !typeNode) return;
+
+    const alpha = conn.weight * 0.6;
+    const riskColor = getRiskColor(typeNode.data.risk);
+
+    ctx.strokeStyle = riskColor.replace(')', `, ${alpha})`).replace('rgb', 'rgba');
+    ctx.lineWidth = conn.weight * 3;
+
+    // Animated line
+    ctx.beginPath();
+    ctx.moveTo(appNode.x, appNode.y);
+
+    const mx = (appNode.x + typeNode.x) / 2;
+    const my = (appNode.y + typeNode.y) / 2;
+    const offset = Math.sin(time * 2 + conn.app.charCodeAt(0) + conn.type.charCodeAt(0)) * 20;
+
+    ctx.quadraticCurveTo(mx + offset, my + offset, typeNode.x, typeNode.y);
+    ctx.stroke();
+  });
+
+  // Draw nodes
+  nodes.forEach(node => {
+    if (!node.visible) return;
+
+    const isHovered = hoveredNode === node;
+    const r = isHovered ? node.radius * 1.3 : node.radius;
+    const color = node.type === 'app' ? node.data.color : getRiskColor(node.data.risk);
+
+    // Glow effect
+    const glow = ctx.createRadialGradient(node.x, node.y, 0, node.x, node.y, r * 2);
+    glow.addColorStop(0, color + '40');
+    glow.addColorStop(1, color + '00');
+    ctx.fillStyle = glow;
+    ctx.beginPath();
+    ctx.arc(node.x, node.y, r * 2, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Node circle
+    ctx.fillStyle = color;
+    ctx.beginPath();
+    ctx.arc(node.x, node.y, r, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Border
+    ctx.strokeStyle = '#fff';
+    ctx.lineWidth = isHovered ? 3 : 2;
+    ctx.stroke();
+
+    // Label
+    ctx.fillStyle = '#fff';
+    ctx.font = `${isHovered ? 'bold ' : ''}${10}px monospace`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(node.label, node.x, node.y);
+  });
+}
+
+function drawParticles() {
+  if (Math.random() < 0.05) {
+    // Spawn particle along a random connection
+    const conn = connections[Math.floor(Math.random() * connections.length)];
+    const appNode = nodes.find(n => n.id === conn.app);
+    const typeNode = nodes.find(n => n.id === conn.type);
+    if (appNode && typeNode) {
+      particles.push({
+        x: appNode.x,
+        y: appNode.y,
+        targetX: typeNode.x,
+        targetY: typeNode.y,
+        progress: 0,
+        speed: 0.01 + Math.random() * 0.01,
+        color: getRiskColor(typeNode.data.risk)
+      });
+    }
+  }
+
+  particles.forEach(p => {
+    p.progress += p.speed;
+    const t = Math.min(p.progress, 1);
+    const x = p.x + (p.targetX - p.x) * t;
+    const y = p.y + (p.targetY - p.y) * t;
+
+    ctx.fillStyle = p.color;
+    ctx.beginPath();
+    ctx.arc(x, y, 2, 0, Math.PI * 2);
+    ctx.fill();
+  });
+
+  particles = particles.filter(p => p.progress < 1);
+}
+
+let particles = [];
+
+function updateStats() {
+  const filteredApps = currentFilter === 'all' ? apps : apps.filter(a => a.cat === currentFilter);
+  const criticalCount = apps.filter(a => a.risk >= 8).length;
+  const avgRisk = (apps.reduce((sum, a) => sum + a.risk, 0) / apps.length).toFixed(1);
+
+  document.getElementById('statApps').textContent = filteredApps.length;
+  document.getElementById('statTypes').textContent = dataTypes.length;
+  document.getElementById('statCritical').textContent = criticalCount;
+  document.getElementById('statAvgRisk').textContent = avgRisk;
+}
+
+function findNodeAt(x, y) {
+  for (const node of nodes) {
+    const dx = node.x - x;
+    const dy = node.y - y;
+    if (Math.sqrt(dx * dx + dy * dy) < node.radius) {
+      return node;
+    }
+  }
+  return null;
+}
+
+canvas.addEventListener('mousemove', (e) => {
+  const rect = canvas.getBoundingClientRect();
+  const x = e.clientX - rect.left;
+  const y = e.clientY - rect.top;
+
+  hoveredNode = findNodeAt(x, y);
+
+  if (hoveredNode) {
+    const node = hoveredNode;
+    let html = `<h4>${node.label}</h4>`;
+
+    if (node.type === 'app') {
+      const connCount = connections.filter(c => c.app === node.id).length;
+      html += `<p>Type: ${node.data.desc}</p>`;
+      html += `<p>Risk Score: ${node.data.risk}/10</p>`;
+      html += `<p>Connects to: ${connCount} data types</p>`;
+    } else {
+      const accessingApps = connections.filter(c => c.type === node.id).length;
+      html += `<p>Risk Level: ${node.data.risk}/10</p>`;
+      html += `<p>Accessed by: ${accessingApps} apps</p>`;
+    }
+
+    tooltip.innerHTML = html;
+    tooltip.classList.add('visible');
+    tooltip.style.left = (e.clientX - rect.left + 15) + 'px';
+    tooltip.style.top = (e.clientY - rect.top - 10) + 'px';
+    canvas.style.cursor = 'pointer';
+  } else {
+    tooltip.classList.remove('visible');
+    canvas.style.cursor = 'default';
+  }
+});
+
+canvas.addEventListener('mouseleave', () => {
+  hoveredNode = null;
+  tooltip.classList.remove('visible');
+});
+
+function updateFilter(filter) {
+  currentFilter = filter;
+  particles = [];
+  document.querySelectorAll('.filter-btn').forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.filter === filter);
+  });
+  initNodes();
+  updateStats();
+}
+
+function resizeCanvas() {
+  const rect = canvas.parentElement.getBoundingClientRect();
+  canvas.width = rect.width * window.devicePixelRatio;
+  canvas.height = rect.height * window.devicePixelRatio;
+  canvas.style.width = rect.width + 'px';
+  canvas.style.height = rect.height + 'px';
+  ctx.scale(window.devicePixelRatio, window.devicePixelRatio);
+  initNodes();
+}
+
+function animate() {
+  updateNodes();
+  drawGraph();
+  drawParticles();
+  time += 0.016;
+  requestAnimationFrame(animate);
+}
+
+document.querySelectorAll('.filter-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    updateFilter(btn.dataset.filter);
+  });
+});
+
+window.addEventListener('resize', resizeCanvas);
+
+resizeCanvas();
+updateStats();
+animate();
+</script>
+</body>
+</html>

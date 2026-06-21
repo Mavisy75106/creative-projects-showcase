@@ -1,0 +1,628 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Token Compression Lab — 互動式 Token 壓縮視覺化</title>
+<style>
+:root {
+  --bg: #0a0a0f;
+  --surface: #12121a;
+  --border: #1e1e2e;
+  --text: #e0e0e8;
+  --text-dim: #8888a0;
+  --accent: #6c8cff;
+  --accent-glow: rgba(108, 140, 255, 0.3);
+  --token: #2a2a40;
+  --token-border: #3a3a55;
+  --merged: #1a3a2a;
+  --merged-border: #2a6a4a;
+  --loss: #5a2a2a;
+  --loss-border: #8a3a3a;
+  --success: #4aff8a;
+}
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+  font-family: 'SF Mono', 'Fira Code', 'Consolas', monospace;
+  background: var(--bg);
+  color: var(--text);
+  overflow-x: hidden;
+  min-height: 100vh;
+}
+.header {
+  text-align: center;
+  padding: 2rem 1rem 1rem;
+  border-bottom: 1px solid var(--border);
+}
+.header h1 {
+  font-size: 1.8rem;
+  background: linear-gradient(135deg, var(--accent), #a06cff);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  margin-bottom: 0.5rem;
+}
+.header p {
+  color: var(--text-dim);
+  font-size: 0.85rem;
+}
+.controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+  padding: 1rem 2rem;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  align-items: center;
+  justify-content: center;
+}
+.control-group {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+.control-group label {
+  color: var(--text-dim);
+  font-size: 0.8rem;
+}
+input[type="range"] {
+  -webkit-appearance: none;
+  width: 180px;
+  height: 6px;
+  background: var(--border);
+  border-radius: 3px;
+  outline: none;
+}
+input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 18px;
+  height: 18px;
+  background: var(--accent);
+  border-radius: 50%;
+  cursor: pointer;
+  box-shadow: 0 0 10px var(--accent-glow);
+}
+.value-display {
+  color: var(--accent);
+  font-weight: bold;
+  font-size: 0.9rem;
+  min-width: 45px;
+}
+.mode-tabs {
+  display: flex;
+  gap: 0.5rem;
+  background: var(--bg);
+  padding: 0.25rem;
+  border-radius: 8px;
+}
+.mode-tab {
+  padding: 0.4rem 1rem;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  color: var(--text-dim);
+  font-family: inherit;
+  font-size: 0.8rem;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+.mode-tab.active {
+  background: var(--accent);
+  color: #fff;
+  border-color: var(--accent);
+}
+.mode-tab:hover:not(.active) {
+  border-color: var(--border);
+  color: var(--text);
+}
+.canvas-container {
+  position: relative;
+  width: 100%;
+  height: 50vh;
+  min-height: 350px;
+  overflow: hidden;
+}
+canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+.stats-bar {
+  display: flex;
+  justify-content: center;
+  gap: 2rem;
+  padding: 1rem 2rem;
+  background: var(--surface);
+  border-top: 1px solid var(--border);
+  flex-wrap: wrap;
+}
+.stat {
+  text-align: center;
+}
+.stat-label {
+  color: var(--text-dim);
+  font-size: 0.75rem;
+  margin-bottom: 0.25rem;
+}
+.stat-value {
+  font-size: 1.2rem;
+  font-weight: bold;
+}
+.stat-value.original { color: var(--accent); }
+.stat-value.compressed { color: var(--success); }
+.stat-value.savings { color: #ffd700; }
+.stat-value.loss { color: #ff6b6b; }
+.info-panel {
+  max-width: 800px;
+  margin: 2rem auto;
+  padding: 0 2rem;
+}
+.info-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 1.5rem;
+  margin-bottom: 1rem;
+}
+.info-card h3 {
+  color: var(--accent);
+  font-size: 1rem;
+  margin-bottom: 0.75rem;
+}
+.info-card p {
+  color: var(--text-dim);
+  font-size: 0.85rem;
+  line-height: 1.6;
+}
+.legend {
+  display: flex;
+  gap: 1.5rem;
+  justify-content: center;
+  padding: 1rem;
+  flex-wrap: wrap;
+}
+.legend-item {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.8rem;
+  color: var(--text-dim);
+}
+.legend-color {
+  width: 20px;
+  height: 20px;
+  border-radius: 4px;
+  border: 2px solid;
+}
+.footer {
+  text-align: center;
+  padding: 2rem;
+  color: var(--text-dim);
+  font-size: 0.75rem;
+  border-top: 1px solid var(--border);
+}
+@media (max-width: 768px) {
+  .controls { padding: 1rem; }
+  input[type="range"] { width: 120px; }
+  .canvas-container { height: 40vh; }
+  .stats-bar { gap: 1rem; }
+}
+</style>
+</head>
+<body>
+<div class="header">
+  <h1>🧪 Token Compression Lab</h1>
+  <p>Interactive visualization of LLM context token compression trade-offs</p>
+</div>
+
+<div class="controls">
+  <div class="control-group">
+    <label>Compression Ratio:</label>
+    <input type="range" id="compressionSlider" min="70" max="95" value="85">
+    <span class="value-display" id="compressionValue">85%</span>
+  </div>
+  <div class="mode-tabs">
+    <button class="mode-tab active" data-mode="token">Token View</button>
+    <button class="mode-tab" data-mode="flow">Flow View</button>
+    <button class="mode-tab" data-mode="heatmap">Heatmap View</button>
+  </div>
+</div>
+
+<div class="legend">
+  <div class="legend-item">
+    <div class="legend-color" style="background: var(--token); border-color: var(--token-border);"></div>
+    <span>Original Token</span>
+  </div>
+  <div class="legend-item">
+    <div class="legend-color" style="background: var(--merged); border-color: var(--merged-border);"></div>
+    <span>Merged Token</span>
+  </div>
+  <div class="legend-item">
+    <div class="legend-color" style="background: var(--loss); border-color: var(--loss-border);"></div>
+    <span>Information Loss</span>
+  </div>
+</div>
+
+<div class="canvas-container">
+  <canvas id="mainCanvas"></canvas>
+</div>
+
+<div class="stats-bar">
+  <div class="stat">
+    <div class="stat-label">Original Tokens</div>
+    <div class="stat-value original" id="statOriginal">1,024</div>
+  </div>
+  <div class="stat">
+    <div class="stat-label">Compressed Tokens</div>
+    <div class="stat-value compressed" id="statCompressed">256</div>
+  </div>
+  <div class="stat">
+    <div class="stat-label">Space Saved</div>
+    <div class="stat-value savings" id="statSavings">75%</div>
+  </div>
+  <div class="stat">
+    <div class="stat-label">Info Loss</div>
+    <div class="stat-value loss" id="statLoss">2.3%</div>
+  </div>
+</div>
+
+<div class="info-panel">
+  <div class="info-card">
+    <h3>📊 How Compression Works</h3>
+    <p>Token compression reduces context window usage by merging semantically similar tokens. This visualization shows the trade-off between compression ratio and information preservation. Higher compression saves space but may lose subtle details.</p>
+  </div>
+  <div class="info-card">
+    <h3>🎯 Optimal Compression Zone</h3>
+  </div>
+</div>
+
+<div class="footer">
+  Token Compression Lab • Built with Canvas 2D • Auto-generated by hermes-agent<br>
+  Inspired by chopratejas/headroom (GitHub Trending)
+</div>
+
+<script>
+const canvas = document.getElementById('mainCanvas');
+const ctx = canvas.getContext('2d');
+const slider = document.getElementById('compressionSlider');
+const compressionValue = document.getElementById('compressionValue');
+let currentMode = 'token';
+let animationId;
+let particles = [];
+
+function resizeCanvas() {
+  const rect = canvas.parentElement.getBoundingClientRect();
+  canvas.width = rect.width * window.devicePixelRatio;
+  canvas.height = rect.height * window.devicePixelRatio;
+  canvas.style.width = rect.width + 'px';
+  canvas.style.height = rect.height + 'px';
+  ctx.scale(window.devicePixelRatio, window.devicePixelRatio);
+}
+
+class Particle {
+  constructor(x, y, type) {
+    this.x = x;
+    this.y = y;
+    this.type = type;
+    this.vx = (Math.random() - 0.5) * 2;
+    this.vy = (Math.random() - 0.5) * 2;
+    this.life = 1.0;
+    this.size = 3 + Math.random() * 4;
+  }
+
+  update() {
+    this.x += this.vx;
+    this.y += this.vy;
+    this.life -= 0.01;
+    this.vy += 0.02;
+  }
+
+  draw() {
+    ctx.globalAlpha = this.life;
+    ctx.fillStyle = this.getColor();
+    ctx.beginPath();
+    ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.globalAlpha = 1;
+  }
+
+  getColor() {
+    switch(this.type) {
+      case 'original': return '#6c8cff';
+      case 'merged': return '#4aff8a';
+      case 'loss': return '#ff6b6b';
+      default: return '#ffffff';
+    }
+  }
+}
+
+function getCompressionRatio() {
+  return parseInt(slider.value) / 100;
+}
+
+function getCompressionStats() {
+  const ratio = getCompressionRatio();
+  const original = 1024;
+  const compressed = Math.round(original * (1 - ratio * 0.75));
+  const savings = Math.round(ratio * 100);
+  const loss = Math.round((ratio * 3.2) * 10) / 10;
+  return { original, compressed, savings, loss };
+}
+
+function updateStats() {
+  const stats = getCompressionStats();
+  document.getElementById('statOriginal').textContent = stats.original.toLocaleString();
+  document.getElementById('statCompressed').textContent = stats.compressed.toLocaleString();
+  document.getElementById('statSavings').textContent = stats.savings + '%';
+  document.getElementById('statLoss').textContent = stats.loss + '%';
+}
+
+function drawTokenView() {
+  const w = canvas.width / window.devicePixelRatio;
+  const h = canvas.height / window.devicePixelRatio;
+  const ratio = getCompressionRatio();
+  const stats = getCompressionStats();
+
+  // Background gradient
+  const bgGrad = ctx.createLinearGradient(0, 0, 0, h);
+  bgGrad.addColorStop(0, '#0a0a1a');
+  bgGrad.addColorStop(1, '#0a0a0f');
+  ctx.fillStyle = bgGrad;
+  ctx.fillRect(0, 0, w, h);
+
+  // Draw grid
+  ctx.strokeStyle = 'rgba(255, 255, 255, 0.03)';
+  ctx.lineWidth = 1;
+  for (let x = 0; x < w; x += 40) {
+    ctx.beginPath();
+    ctx.moveTo(x, 0);
+    ctx.lineTo(x, h);
+    ctx.stroke();
+  }
+  for (let y = 0; y < h; y += 40) {
+    ctx.beginPath();
+    ctx.moveTo(0, y);
+    ctx.lineTo(w, y);
+    ctx.stroke();
+  }
+
+  // Draw tokens
+  const tokenSize = 20;
+  const gap = 4;
+  const originalTokens = 60;
+  const cols = Math.floor(w / (tokenSize + gap));
+
+  // Original tokens (left side)
+  const startX = w * 0.05;
+  const startY = h * 0.15;
+  const endX = w * 0.5;
+
+  let count = 0;
+  for (let row = 0; count < originalTokens && row < 20; row++) {
+    for (let col = 0; col < cols - 2 && count < originalTokens; col++) {
+      const x = startX + col * (tokenSize + gap);
+      const y = startY + row * (tokenSize + gap);
+      if (x > endX) break;
+
+      ctx.fillStyle = '#2a2a40';
+      ctx.strokeStyle = '#3a3a55';
+      ctx.lineWidth = 1;
+      ctx.fillRect(x, y, tokenSize, tokenSize);
+      ctx.strokeRect(x, y, tokenSize, tokenSize);
+      count++;
+    }
+  }
+
+  // Compressed tokens (right side)
+  const compressedCount = Math.round(originalTokens * (1 - ratio * 0.75));
+  const compStartX = w * 0.55;
+  const compEndX = w * 0.95;
+
+  count = 0;
+  for (let row = 0; count < compressedCount && row < 20; row++) {
+    for (let col = 0; col < cols - 2 && count < compressedCount; col++) {
+      const x = compStartX + col * (tokenSize + gap);
+      const y = startY + row * (tokenSize + gap);
+      if (x > compEndX) break;
+
+      ctx.fillStyle = '#1a3a2a';
+      ctx.strokeStyle = '#2a6a4a';
+      ctx.lineWidth = 1;
+      ctx.fillRect(x, y, tokenSize, tokenSize);
+      ctx.strokeRect(x, y, tokenSize, tokenSize);
+      count++;
+    }
+  }
+
+  // Draw merge lines
+  ctx.strokeStyle = 'rgba(74, 255, 138, 0.2)';
+  ctx.lineWidth = 1;
+  for (let i = 0; i < 10; i++) {
+    const x1 = startX + Math.random() * (endX - startX);
+    const x2 = compStartX + Math.random() * (compEndX - compStartX);
+    ctx.beginPath();
+    ctx.moveTo(x1, startY);
+    ctx.lineTo(x2, startY);
+    ctx.stroke();
+  }
+
+  // Labels
+  ctx.fillStyle = '#6c8cff';
+  ctx.font = 'bold 14px monospace';
+  ctx.textAlign = 'center';
+  ctx.fillText('ORIGINAL', w * 0.25, h * 0.08);
+
+  ctx.fillStyle = '#4aff8a';
+  ctx.fillText('COMPRESSED', w * 0.75, h * 0.08);
+
+  // Compression arrow
+  const arrowY = startY + (tokenSize + gap) * 8;
+  ctx.strokeStyle = '#ffd700';
+  ctx.lineWidth = 2;
+  ctx.setLineDash([5, 5]);
+  ctx.beginPath();
+  ctx.moveTo(w * 0.5, arrowY - 10);
+  ctx.lineTo(w * 0.5, arrowY + 10);
+  ctx.stroke();
+  ctx.setLineDash([]);
+}
+
+function drawFlowView() {
+  const w = canvas.width / window.devicePixelRatio;
+  const h = canvas.height / window.devicePixelRatio;
+  const ratio = getCompressionRatio();
+
+  // Background
+  ctx.fillStyle = '#0a0a1a';
+  ctx.fillRect(0, 0, w, h);
+
+  // Flow particles
+  const centerX = w / 2;
+  const centerY = h / 2;
+  const time = Date.now() * 0.001;
+
+  // Draw flow paths
+  for (let i = 0; i < 50; i++) {
+    const angle = (i / 50) * Math.PI * 2;
+    const radius = 50 + Math.sin(time + i) * 20;
+    const x = centerX + Math.cos(angle) * radius;
+    const y = centerY + Math.sin(angle) * radius;
+
+    ctx.fillStyle = `rgba(108, 140, 255, ${0.1 + Math.sin(time + i * 0.1) * 0.05})`;
+    ctx.beginPath();
+    ctx.arc(x, y, 3, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  // Central glow
+  const glow = ctx.createRadialGradient(centerX, centerY, 0, centerX, centerY, 100);
+  glow.addColorStop(0, 'rgba(108, 140, 255, 0.1)');
+  glow.addColorStop(1, 'rgba(108, 140, 255, 0)');
+  ctx.fillStyle = glow;
+  ctx.fillRect(0, 0, w, h);
+
+  // Compression visualization
+  ctx.fillStyle = '#6c8cff';
+  ctx.font = 'bold 16px monospace';
+  ctx.textAlign = 'center';
+  ctx.fillText(`Compression: ${(ratio * 100).toFixed(0)}%`, centerX, centerY);
+  ctx.fillStyle = '#4aff8a';
+  ctx.font = '14px monospace';
+  ctx.fillText(`Tokens: ${Math.round(1024 * (1 - ratio * 0.75))} / 1024`, centerX, centerY + 30);
+}
+
+function drawHeatmapView() {
+  const w = canvas.width / window.devicePixelRatio;
+  const h = canvas.height / window.devicePixelRatio;
+  const ratio = getCompressionRatio();
+
+  ctx.fillStyle = '#0a0a1a';
+  ctx.fillRect(0, 0, w, h);
+
+  // Draw heatmap grid
+  const cols = 40;
+  const rows = 15;
+  const cellW = (w - 40) / cols;
+  const cellH = (h - 80) / rows;
+
+  for (let row = 0; row < rows; row++) {
+    for (let col = 0; col < cols; col++) {
+      const value = Math.random() * ratio;
+      const alpha = 0.2 + value * 0.6;
+
+      if (value < ratio) {
+        // Merged - green
+        ctx.fillStyle = `rgba(74, 255, 138, ${alpha})`;
+      } else {
+        // Lost - red
+        ctx.fillStyle = `rgba(255, 107, 107, ${alpha})`;
+      }
+
+      ctx.fillRect(20 + col * cellW, 30 + row * cellH, cellW - 1, cellH - 1);
+    }
+  }
+
+  // Legend
+  ctx.fillStyle = '#4aff8a';
+  ctx.fillRect(20, h - 40, 20, 20);
+  ctx.fillStyle = '#ff6b6b';
+  ctx.fillRect(60, h - 40, 20, 20);
+
+  ctx.fillStyle = '#8888a0';
+  ctx.font = '11px monospace';
+  ctx.textAlign = 'left';
+  ctx.fillText('Merged', 85, h - 25);
+  ctx.fillText('Lost', 125, h - 25);
+}
+
+function updateMode(mode) {
+  currentMode = mode;
+  document.querySelectorAll('.mode-tab').forEach(tab => {
+    tab.classList.toggle('active', tab.dataset.mode === mode);
+  });
+}
+
+function animate() {
+  const w = canvas.width / window.devicePixelRatio;
+  const h = canvas.height / window.devicePixelRatio;
+
+  ctx.clearRect(0, 0, w, h);
+
+  switch(currentMode) {
+    case 'token':
+      drawTokenView();
+      break;
+    case 'flow':
+      drawFlowView();
+      break;
+    case 'heatmap':
+      drawHeatmapView();
+      break;
+  }
+
+  // Update particles
+  particles = particles.filter(p => p.life > 0);
+  particles.forEach(p => {
+    p.update();
+    p.draw();
+  });
+
+  // Spawn new particles occasionally
+  if (Math.random() < 0.1) {
+    const w = canvas.width / window.devicePixelRatio;
+    const h = canvas.height / window.devicePixelRatio;
+    const types = ['original', 'merged', 'loss'];
+    const type = types[Math.floor(Math.random() * types.length)];
+    particles.push(new Particle(
+      Math.random() * w,
+      Math.random() * h,
+      type
+    ));
+  }
+
+  animationId = requestAnimationFrame(animate);
+}
+
+// Event listeners
+slider.addEventListener('input', () => {
+  compressionValue.textContent = slider.value + '%';
+  updateStats();
+});
+
+document.querySelectorAll('.mode-tab').forEach(tab => {
+  tab.addEventListener('click', () => {
+    updateMode(tab.dataset.mode);
+  });
+});
+
+window.addEventListener('resize', () => {
+  resizeCanvas();
+});
+
+// Initialize
+resizeCanvas();
+updateStats();
+animate();
+</script>
+</body>
+</html>
