@@ -293,6 +293,7 @@ header p {
     <button class="filter-btn" data-filter="security">Security</button>
     <button class="filter-btn" data-filter="space">Space</button>
     <button class="filter-btn" data-filter="creative">Creative</button>
+    <button class="filter-btn" data-filter="game">Game</button>
   </div>
 
   <div class="view-toggle">
@@ -345,6 +346,7 @@ const projects = [
   { number: 73, title: "Dead Economy Visualizer", desc: "Multi-mode Canvas visualization of a dead economy: liquidity trap, currency debasement, shadow market, and capital flight — driven by real-world macro indicators.", tags: ["visualization", "creative"], url: "https://Mavisy75106.github.io/creative-project-73-dead-economy/", date: "2026-05-30" },
   { number: 73, title: "MoE Architecture Explorer", desc: "Interactive LLM MoE architecture visualization with routing, activation, and throughput comparison", tags: ["visualization", "ai-agent"], url: "https://Mavisy75106.github.io/moe-architecture-explorer/", date: "2026-05-30" },
   { number: 75, title: "1-Bit Bonsai — Image Quantization Lab", desc: "Explore how 1-bit quantization compresses 4B parameter image models to ~0.93GB — side-by-side full precision vs quantized canvas, real-time PSNR/SSIM metrics, per-channel bit-level visualization, and denoising diffusion simulation.", tags: ["visualization", "creative"], url: "https://Mavisy75106.github.io/creative-project-75/", date: "2026-06-01" },
+  { number: 89, title: "Beyond All Reason — RTS Command Center", desc: "Interactive real-time strategy game inspired by the trending Beyond All Reason — base building, unit combat, resource management, and enemy AI with particle effects.", tags: ["creative", "game"], url: "https://mavisy75106.github.io/beyond-all-reason-rts/", date: "2026-06-22" },
 ];
 
 // Re-tag for filter matching
@@ -352,10 +354,10 @@ projects.forEach(p => {
   p.category = p.tags[0];
 });
 
-const filters = ['all', 'ai-agent', 'visualization', 'cli', 'security', 'space', 'creative'];
+const filters = ['all', 'ai-agent', 'visualization', 'cli', 'security', 'space', 'creative', 'game'];
 const filterLabels = {
   all: 'All', 'ai-agent': 'AI Agent', 'visualization': 'Visualization',
-  'cli': 'CLI / Tool', 'security': 'Security', 'space': 'Space', 'creative': 'Creative'
+  'cli': 'CLI / Tool', 'security': 'Security', 'space': 'Space', 'creative': 'Creative', 'game': 'Game'
 };
 
 function renderGrid(filtered) {
